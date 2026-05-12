@@ -100,7 +100,7 @@ class OpenSandboxSession:
         conn = ConnectionConfigSync(
             domain=self._config.domain,
             api_key=self._config.api_key,
-            request_timeout=timedelta(seconds=self._config.timeout),
+            request_timeout=timedelta(seconds=60),
         )
 
         resource: dict[str, str] = {}
@@ -121,7 +121,7 @@ class OpenSandboxSession:
                     Volume(
                         name=f"host-{len(volumes)}",
                         host=Host(path=host_path),
-                        mount_path=mount_path,
+                        mountPath=mount_path,
                     )
                 )
             except ImportError:

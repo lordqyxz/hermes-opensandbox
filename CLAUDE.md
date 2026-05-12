@@ -1,50 +1,35 @@
 ## 架构决策记录 (ADR)
 
-<!-- /dev 每次架构选择结果追加到此 -->
+所有架构决策记录在 [CHANGELOG.md](CHANGELOG.md)，每次架构选择结果追加到该文件。
 
-### ADR-1: 2026-05-12 — hermes-opensandbox 重构
+## 版本管理
 
-- **项目类型**: Python Library + CLI 混合
-- **架构模式**: Clean Architecture 简化版（SDK 封装与 Hermes 适配彻底分离）
-- **核心实体/组件**:
-  - `SandboxConfig` — 配置值对象 (config.py)
-  - `OpenSandboxSession` — 沙箱会话聚合根 (session.py)
-  - `CLI Patcher` — Hermes 注入工具 (cli.py)
-- **接口/契约**:
-  - `OpenSandboxSession` 零 Hermes 依赖，可独立使用
-  - Thin adapter（`tools/environments/opensandbox.py`）由 CLI 自动生成到 Hermes 安装目录
-  - 5 个注入点：terminal_tool.py (2: elif分支+错误消息, check_requirements) + prompt_builder.py (2: frozenset, fallback描述) + opensandbox.py (1: thin adapter)
+- 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)：`MAJOR.MINOR.PATCH`
+- 版本存储在两处，发布时需同步更新：
+  - `VERSION` — 纯文本文件，CI/CD 和脚本读取
+  - `pyproject.toml` — `project.version` 字段
+- 发布流程：
+  1. 更新 `VERSION` 和 `pyproject.toml` 中的版本号
+  2. 更新 `CHANGELOG.md`，在顶部追加 `## v<version> (YYYY-MM-DD)` 版本条目
+  3. 打 tag：`git tag -a v<version> -m "v<version>"`
+  4. 推送：`git push && git push --tags`（CI 在 tag push 时自动发布到 PyPI）
 
-### ADR-2: 2026-05-12 — 错误分类体系
+## 开发命令
 
-- 新增异常层级: `SandboxError` → `SandboxCreationError` → `SandboxImageError` / `SandboxNetworkError` / `SandboxAuthError`
-- `create()` 中捕获 SDK 原生异常（`SandboxReadyTimeoutException`, `SandboxApiException`, `httpx.ConnectError`, `SandboxInternalException`）并映射为分类异常
-- Thin adapter 中 catch `SandboxCreationError` 让子类异常直接传播至 Hermes，AI 可通过异常类名识别错误类别
+```bash
+# 安装开发依赖
+pip install -e ".[dev]"
 
-### ADR-3: 2026-05-12 — Plugin 系统 vs Patching
+# Lint & 格式化
+ruff check src/          # 代码检查
+ruff format --check src/ # 格式检查
 
-- Hermes plugin 系统不支持替换 terminal 执行后端（provider 类型仅限 Memory/Context Engine）
-- `pre_tool_call` 只能拦截不能替换执行逻辑；`register_tool` 只能新增工具
-- **结论**: Patching 是 Hermes 架构限制下的最小侵入方案
+# 类型检查
+pyright src/
 
-### ADR-4: 2026-05-12 — 文件传输机制
-
-- 文件传入沙箱通过 shell heredoc 完成（`BaseEnvironment._embed_stdin_heredoc()`）
-- Thin adapter 设置 `_stdin_mode = "heredoc"`，命令字符串中已包含完整 heredoc
-- SDK `sb.files.write_file()` 可作为大文件/二进制文件的备用通道
-
-### ADR-6: 2026-05-12 — 宿主机路径挂载
-
-- 通过 SDK `volumes` 参数挂载宿主机路径到沙箱，`mount_path` 与 `host_path` 一致保证路径透明
-- 默认挂载 `$HOME`、`/tmp`、`/var/folders`（macOS）
-- 可通过 `OPENSANDBOX_MOUNTS` 环境变量自定义（格式: `host:mount,host:mount`）
-- OpenSandbox server 的 `allowed_host_paths` 需包含所有挂载路径前缀
-
-### ADR-5: 2026-05-12 — 配置解析链
-
-- 镜像/domain/api_key 不从模板硬编码，统一通过 `SandboxConfig.from_env()` 解析
-- 优先级: Hermes config (`cc.get`) → 环境变量 (`OPENSANDBOX_*`) → `config.py` 默认常量
-- k8s 节点无法访问 Docker Hub，镜像需本地缓存且使用非 `:latest` tag（`imagePullPolicy: IfNotPresent`）
+# 构建
+python -m build
+```
 
 ## 安装指南
 

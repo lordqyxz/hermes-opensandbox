@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 DEFAULT_IMAGE = "nikolaik/python-nodejs:python3.11-nodejs20"
 DEFAULT_DOMAIN = "localhost:8080"
-DEFAULT_TIMEOUT = 300
+DEFAULT_TIMEOUT = 86400  # 24h sandbox lifetime before auto-close
 DEFAULT_CPU = 1.0
 DEFAULT_MEMORY_MB = 5120
 DEFAULT_DISK_MB = 51200
