@@ -1,0 +1,22 @@
+{
+  "include": [
+    "src"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/node_modules"
+  ],
+  "typeCheckingMode": "strict",
+  "pythonVersion": "3.10",
+  "pythonPlatform": "All",
+  "reportMissingImports": true,
+  "reportMissingTypeStubs": false,
+  "reportUnusedImport": true,
+  "reportUnusedVariable": true,
+  "reportUnknownMemberType": true,
+  "reportUnknownArgumentType": true,
+  "reportUnknownParameterType": true,
+  "reportUnknownVariableType": true,
+  "reportUnknownLambdaType": true,
+  "reportCallInDefaultInitializer": true
+}

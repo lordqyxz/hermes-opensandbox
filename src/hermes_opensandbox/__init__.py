@@ -2,20 +2,35 @@
 
 Usage:
 
-    from hermes_opensandbox.environment import OpenSandboxEnvironment
+    from hermes_opensandbox import OpenSandboxSession, SandboxConfig
 
-    env = OpenSandboxEnvironment(
+    config = SandboxConfig.from_env(
         domain="your-server:8080",
         api_key="sk-xxx",
-        image="python:3.11",
-        cwd="/workspace",
-        timeout=300,
     )
-    result = env.execute("echo hello")
-    env.cleanup()
+    with OpenSandboxSession(config) as session:
+        session.create()
+        output, exit_code = session.execute("echo hello")
+        session.kill()
 """
 
-from hermes_opensandbox.environment import OpenSandboxEnvironment
+from hermes_opensandbox.config import SandboxConfig
+from hermes_opensandbox.session import (
+    OpenSandboxSession,
+    SandboxNotCreatedError,
+    SandboxCreationError,
+    SandboxImageError,
+    SandboxNetworkError,
+    SandboxAuthError,
+)
 
 __version__ = "0.1.0"
-__all__ = ["OpenSandboxEnvironment"]
+__all__ = [
+    "OpenSandboxSession",
+    "SandboxConfig",
+    "SandboxNotCreatedError",
+    "SandboxCreationError",
+    "SandboxImageError",
+    "SandboxNetworkError",
+    "SandboxAuthError",
+]
