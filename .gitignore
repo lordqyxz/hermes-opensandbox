@@ -30,3 +30,5 @@ htmlcov/
 
 # Build
 *.bak
+
+.ruff_cache/
