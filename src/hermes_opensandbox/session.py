@@ -109,6 +109,26 @@ class OpenSandboxSession:
         if self._config.memory > 0:
             resource["memory"] = f"{self._config.memory}Mi"
 
+        volumes: list[Any] = []
+        mounts = self._config.mounts or {}
+        for host_path, mount_path in mounts.items():
+            try:
+                from opensandbox.models.sandboxes import (  # noqa: PLC0415
+                    Host,
+                    Volume,
+                )
+                volumes.append(
+                    Volume(
+                        name=f"host-{len(volumes)}",
+                        host=Host(path=host_path),
+                        mount_path=mount_path,
+                    )
+                )
+            except ImportError:
+                pass
+        if volumes:
+            logger.info("Mounts: %s", {v.host.path: v.mount_path for v in volumes if v.host})
+
         logger.info(
             "Creating OpenSandbox: image=%s domain=%s resource=%s",
             self._config.image,
@@ -122,6 +142,7 @@ class OpenSandboxSession:
                 timeout=timedelta(seconds=self._config.timeout),
                 connection_config=conn,
                 resource=resource,
+                volumes=volumes or None,
             )
         except SandboxReadyTimeoutException as e:
             raise SandboxImageError(
@@ -191,9 +212,17 @@ class OpenSandboxSession:
     # ------------------------------------------------------------------
 
     def kill(self) -> None:
-        """Terminate the remote sandbox (irreversible)."""
+        """Terminate the remote sandbox (irreversible).
+
+        In debug mode the sandbox is kept alive for inspection.
+        """
         sb = self._sandbox
         if sb is None:
+            return
+        if self._config.debug:
+            logger.info(
+                "Debug mode: keeping sandbox %s alive (skip kill)", sb.id
+            )
             return
         logger.info("Killing sandbox %s", sb.id)
         try:
@@ -202,9 +231,18 @@ class OpenSandboxSession:
             logger.debug("kill() raised (ignored)", exc_info=True)
 
     def close(self) -> None:
-        """Release local HTTP resources. Safe to call multiple times."""
+        """Release local HTTP resources. Safe to call multiple times.
+
+        In debug mode the sandbox is kept alive for inspection.
+        """
         sb = self._sandbox
         if sb is None:
+            return
+        if self._config.debug:
+            logger.info(
+                "Debug mode: keeping sandbox %s alive (skip close)", sb.id
+            )
+            self._sandbox = None
             return
         try:
             sb.close()

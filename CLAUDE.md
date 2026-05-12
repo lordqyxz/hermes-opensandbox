@@ -33,6 +33,13 @@
 - Thin adapter 设置 `_stdin_mode = "heredoc"`，命令字符串中已包含完整 heredoc
 - SDK `sb.files.write_file()` 可作为大文件/二进制文件的备用通道
 
+### ADR-6: 2026-05-12 — 宿主机路径挂载
+
+- 通过 SDK `volumes` 参数挂载宿主机路径到沙箱，`mount_path` 与 `host_path` 一致保证路径透明
+- 默认挂载 `$HOME`、`/tmp`、`/var/folders`（macOS）
+- 可通过 `OPENSANDBOX_MOUNTS` 环境变量自定义（格式: `host:mount,host:mount`）
+- OpenSandbox server 的 `allowed_host_paths` 需包含所有挂载路径前缀
+
 ### ADR-5: 2026-05-12 — 配置解析链
 
 - 镜像/domain/api_key 不从模板硬编码，统一通过 `SandboxConfig.from_env()` 解析

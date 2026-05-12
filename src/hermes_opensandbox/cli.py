@@ -107,6 +107,7 @@ class OpenSandboxEnvironment(BaseEnvironment):
             memory=memory,
             disk=disk,
             task_id=task_id,
+            debug=_is_debug(),
         )
         self._session = OpenSandboxSession(self._config)
         try:
