@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hermes-open-sandbox"
+version = "0.1.0"
+description = "OpenSandbox execution backend for Hermes Agent - secure sandboxed code execution"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "shiyz", email = "yz.shi@outlook.com"}
+]
+requires-python = ">=3.10"
+keywords = ["hermes", "opensandbox", "sandbox", "code-execution", "hermes-agent"]
+
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: System :: Systems Administration",
+]
+
+dependencies = [
+    "opensandbox>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/lordqyxz/hermes-opensandbox"
+Repository = "https://github.com/lordqyxz/hermes-opensandbox"
+Issues = "https://github.com/lordqyxz/hermes-opensandbox/issues"
+
+[project.scripts]
+hermes-opensandbox-setup = "hermes_opensandbox.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hermes_opensandbox"]
