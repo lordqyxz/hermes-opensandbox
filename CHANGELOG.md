@@ -1,3 +1,16 @@
+## v0.1.3 (2026-05-12)
+
+- 沙箱改为 session 级持久化：每个 session 仅创建一个沙箱，session 退出才销毁
+- 新增后台自动续期线程，每 15 分钟调用 OpenSandbox `renew` API 延长沙箱生命周期
+- 降低默认资源配置：CPU 0.5→1.0、内存 5000→256MB、磁盘 51200→5000MB
+- `create_opensandbox_module` 改为始终覆盖，确保部署最新 adapter 模板
+
+## v0.1.2 (2026-05-12)
+
+- 修复 `_OPEN_BRANCH` 中 `timeout` 被 Hermes 调用参数覆盖导致沙箱过早关闭的 bug
+- 修复 `mounts` 未传递给 adapter 导致宿主机路径挂载失效、文件读取失败的 bug
+- 新增 `OPENSANDBOX_TIMEOUT` 环境变量支持
+
 ## v0.1.1 (2026-05-12)
 
 - Sandbox 生命周期默认值从 300s 提升至 86400s (24h)，解决自动关闭过快问题

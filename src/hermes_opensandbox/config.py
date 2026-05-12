@@ -8,9 +8,10 @@ from dataclasses import dataclass
 DEFAULT_IMAGE = "nikolaik/python-nodejs:python3.11-nodejs20"
 DEFAULT_DOMAIN = "localhost:8080"
 DEFAULT_TIMEOUT = 86400  # 24h sandbox lifetime before auto-close
-DEFAULT_CPU = 1.0
-DEFAULT_MEMORY_MB = 5120
-DEFAULT_DISK_MB = 51200
+DEFAULT_CPU = 0.5
+DEFAULT_MEMORY_MB = 512
+DEFAULT_DISK_MB = 5000
+DEFAULT_RENEW_INTERVAL = 1800  # 30min between sandbox renewal calls
 DEFAULT_CWD = "/workspace"
 
 # Default host paths to mount into the sandbox (host_path → mount_path).
@@ -73,6 +74,7 @@ class SandboxConfig:
             "cpu": float(os.getenv("OPENSANDBOX_CPU", str(DEFAULT_CPU))),
             "memory": int(os.getenv("OPENSANDBOX_MEMORY", str(DEFAULT_MEMORY_MB))),
             "disk": int(os.getenv("OPENSANDBOX_DISK", str(DEFAULT_DISK_MB))),
+            "timeout": int(os.getenv("OPENSANDBOX_TIMEOUT", str(DEFAULT_TIMEOUT))),
             "task_id": os.getenv("OPENSANDBOX_TASK_ID", "default"),
             "mounts": mounts,
             "debug": os.getenv("OPENSANDBOX_DEBUG", "") in ("1", "true", "yes"),

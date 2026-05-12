@@ -117,6 +117,7 @@ class OpenSandboxSession:
                     Host,
                     Volume,
                 )
+
                 volumes.append(
                     Volume(
                         name=f"host-{len(volumes)}",
@@ -127,7 +128,9 @@ class OpenSandboxSession:
             except ImportError:
                 pass
         if volumes:
-            logger.info("Mounts: %s", {v.host.path: v.mount_path for v in volumes if v.host})
+            logger.info(
+                "Mounts: %s", {v.host.path: v.mount_path for v in volumes if v.host}
+            )
 
         logger.info(
             "Creating OpenSandbox: image=%s domain=%s resource=%s",
@@ -211,6 +214,25 @@ class OpenSandboxSession:
     # Cleanup
     # ------------------------------------------------------------------
 
+    def renew(self) -> None:
+        """Extend the sandbox expiration to prevent auto-termination.
+
+        Uses the OpenSandbox renewal API to bump the expiration time
+        by :attr:`SandboxConfig.timeout` seconds from now.
+        """
+        sb = self._sandbox
+        if sb is None:
+            return
+        try:
+            sb.renew(timedelta(seconds=self._config.timeout))
+            logger.debug("Renewed sandbox %s", sb.id)
+        except Exception:
+            logger.debug("renew() raised (ignored)", exc_info=True)
+
+    def is_alive(self) -> bool:
+        """Return ``True`` if the sandbox exists and has not been killed."""
+        return self._sandbox is not None
+
     def kill(self) -> None:
         """Terminate the remote sandbox (irreversible).
 
@@ -220,9 +242,7 @@ class OpenSandboxSession:
         if sb is None:
             return
         if self._config.debug:
-            logger.info(
-                "Debug mode: keeping sandbox %s alive (skip kill)", sb.id
-            )
+            logger.info("Debug mode: keeping sandbox %s alive (skip kill)", sb.id)
             return
         logger.info("Killing sandbox %s", sb.id)
         try:
@@ -239,9 +259,7 @@ class OpenSandboxSession:
         if sb is None:
             return
         if self._config.debug:
-            logger.info(
-                "Debug mode: keeping sandbox %s alive (skip close)", sb.id
-            )
+            logger.info("Debug mode: keeping sandbox %s alive (skip close)", sb.id)
             self._sandbox = None
             return
         try:

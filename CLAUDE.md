@@ -105,3 +105,47 @@ grep "opensandbox" ~/.hermes/hermes-agent/tools/terminal_tool.py | wc -l
 | 语言/框架 | 代码级 skill | 说明 |
 |-----------|-------------|------|
 | Python | python-code | Pythonic 编码风格、DDD/Clean Architecture 实现 |
+
+## 注入机制注意事项
+
+- 注入使用字符串标记匹配 Hermes Agent 源码，Hermes 函数重命名会导致标记失效
+- `_CHECK_PATTERN` 使用正则 `return\s+\w+\(config\)` 匹配，对函数名重命名有抗性
+- 每个注入点独立检测幂等（sentinel / find_spec），避免部分注入残留被跳过
+- 标记匹配失败必须记录 error/warning，不能静默跳过
+
+## 配置流转路径
+
+- `hermes config set terminal.<key>` → `~/.hermes/config.yaml` → `_config_to_env_sync` 映射 → 环境变量
+- `terminal_tool.py` 的 `_get_env_config()` 只读环境变量，不读 config.yaml
+- `opensandbox_*` 配置项不在 hermes 的 `_config_to_env_sync` 映射中，用户必须设置 `OPENSANDBOX_*` 环境变量
+- `_create_environment()` 中 `cc = container_config or {}`，仅含 `container_cpu/memory/disk` 等资源 key，不含 opensandbox 配置
+
+## 沙箱持久化模型
+
+- 每个 Hermes session 创建一个沙箱，session 内所有命令共享同一沙箱
+- `_cancel()` 为 no-op，不 kill 沙箱；被意外 kill 后 `_ensure_sandbox()` 自动重建
+- `cleanup()` 在 session 退出时调用 `kill()` + `close()` 销毁沙箱
+- 配置文件中的 `cpu/memory/disk` 通过 `_OPEN_BRANCH` 从 `_sandbox_cfg` 取值，确保 `OPENSANDBOX_*` 环境变量能覆盖 Hermes 的 `container_*` 默认值
+
+## 自动续期机制
+
+- adapter 启动 daemon 线程每 `_RENEW_INTERVAL`（900s）调用 `OpenSandboxSession.renew()`
+- `renew()` 内部调用 SDK `sb.renew(timedelta(seconds=config.timeout))`，将过期时间从当前时刻后延
+- session 退出时 `_stop_renew.set()` 停止续期线程
+- 续期失败静默忽略（debug 日志记录）
+
+## 资源默认值
+
+| 参数 | 值 | 环境变量 |
+|------|-----|----------|
+| CPU | 0.5 | `OPENSANDBOX_CPU` |
+| 内存 | 512Mi | `OPENSANDBOX_MEMORY` |
+| 磁盘 | 5000Mi | `OPENSANDBOX_DISK` |
+| 超时 | 86400s (24h) | `OPENSANDBOX_TIMEOUT` |
+| 续期间隔 | 900s | 硬编码 `_RENEW_INTERVAL` |
+
+## Debug 模式注意事项
+
+- `OPENSANDBOX_DEBUG=1` 时 `kill()` 和 `close()` 跳过实际操作，沙箱保留运行
+- 多次 `hermes -z` 调用会在 k8s 中累积 Running 沙箱，单节点集群可能耗尽资源
+- 测试完成后需手动清理：`curl -X DELETE /sandboxes/{id}` 或 `kubectl delete pod -n opensandbox`
