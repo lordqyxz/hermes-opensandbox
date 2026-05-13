@@ -46,7 +46,7 @@ python -m build
 pip install hermes-open-sandbox opensandbox
 
 # 2. 注入 backend（幂等，可多次执行）
-hermes-opensandbox-setup
+hermes-open-sandbox-setup
 
 # 3. 配置 Hermes
 hermes config set terminal.backend opensandbox
@@ -86,7 +86,7 @@ sb.kill(); sb.close()
 "
 
 # 检查 patch 状态
-grep -l "hermes-opensandbox" ~/.hermes/hermes-agent/tools/environments/opensandbox.py
+grep -l "hermes-open-sandbox" ~/.hermes/hermes-agent/tools/environments/opensandbox.py
 grep "opensandbox" ~/.hermes/hermes-agent/tools/terminal_tool.py | wc -l
 ```
 

@@ -7,7 +7,7 @@ Run Hermes terminal and file tools inside secure, isolated [OpenSandbox](https:/
 ## Architecture
 
 ```
-hermes-opensandbox (pip package)         Hermes Agent (after setup)
+hermes-open-sandbox (pip package)         Hermes Agent (after setup)
 ┌──────────────────────────────┐        ┌─────────────────────────────────┐
 │ SandboxConfig                │        │ tools/environments/opensandbox  │
 │ OpenSandboxSession           │──delegates──│  - BaseEnvironment subclass    │
@@ -16,7 +16,7 @@ hermes-opensandbox (pip package)         Hermes Agent (after setup)
 └──────────────────────────────┘        └─────────────────────────────────┘
 ```
 
-The package itself has **no dependency on Hermes Agent internals**. The thin adapter that bridges Hermes's `BaseEnvironment` interface is auto-generated into the Hermes installation directory by `hermes-opensandbox-setup`.
+The package itself has **no dependency on Hermes Agent internals**. The thin adapter that bridges Hermes's `BaseEnvironment` interface is auto-generated into the Hermes installation directory by `hermes-open-sandbox-setup`.
 
 ## Quick Start
 
@@ -25,7 +25,7 @@ The package itself has **no dependency on Hermes Agent internals**. The thin ada
 pip install hermes-open-sandbox opensandbox
 
 # 2. Patch Hermes to register the backend (idempotent)
-hermes-opensandbox-setup
+hermes-open-sandbox-setup
 
 # 3. Configure
 hermes config set terminal.backend opensandbox

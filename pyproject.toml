@@ -39,12 +39,12 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/lordqyxz/hermes-opensandbox"
-Repository = "https://github.com/lordqyxz/hermes-opensandbox"
-Issues = "https://github.com/lordqyxz/hermes-opensandbox/issues"
+Homepage = "https://github.com/lordqyxz/hermes-open-sandbox"
+Repository = "https://github.com/lordqyxz/hermes-open-sandbox"
+Issues = "https://github.com/lordqyxz/hermes-open-sandbox/issues"
 
 [project.scripts]
-hermes-opensandbox-setup = "hermes_opensandbox.cli:main"
+hermes-open-sandbox-setup = "hermes_opensandbox.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/hermes_opensandbox"]

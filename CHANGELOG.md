@@ -18,7 +18,7 @@
 
 ## 架构决策记录 (ADR)
 
-### ADR-1: 2026-05-12 — hermes-opensandbox 重构
+### ADR-1: 2026-05-12 — hermes-open-sandbox 重构
 
 - **项目类型**: Python Library + CLI 混合
 - **架构模式**: Clean Architecture 简化版（SDK 封装与 Hermes 适配彻底分离）
