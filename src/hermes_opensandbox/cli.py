@@ -100,7 +100,7 @@ from hermes_opensandbox.session import OpenSandboxSession, SandboxCreationError
 from hermes_opensandbox.config import SandboxConfig
 
 
-_RENEW_INTERVAL = 900
+_RENEW_INTERVAL = 600
 
 
 def _is_debug() -> bool:
@@ -165,12 +165,20 @@ class OpenSandboxEnvironment(BaseEnvironment):
     # --------------------------------------------------------------
 
     def _renew_loop(self) -> None:
+        try:
+            with self._lock:
+                self._session.renew()
+            logger.debug("Initial sandbox renewal successful")
+        except Exception:
+            logger.warning("Initial sandbox renewal failed", exc_info=True)
+        
         while not self._stop_renew.wait(_RENEW_INTERVAL):
             try:
                 with self._lock:
                     self._session.renew()
+                logger.debug("Sandbox renewed successfully")
             except Exception:
-                pass
+                logger.warning("Sandbox renewal failed, will retry in %ds", _RENEW_INTERVAL, exc_info=True)
 
     def _ensure_sandbox(self) -> None:
         """Recreate the sandbox if it was killed (e.g. by cancel)."""
