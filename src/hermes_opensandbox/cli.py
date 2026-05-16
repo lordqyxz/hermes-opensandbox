@@ -19,13 +19,21 @@ import shutil
 import sys
 from pathlib import Path
 
+from importlib.metadata import version as pkg_version
+
 logger = logging.getLogger(__name__)
 
 # ------------------------------------------------------------------
-# Sentinel — marks all auto-patched / auto-generated code
+# Version-tagged sentinel — embedded in every auto-patched block so
+# we can detect stale injections and replace them on upgrade.
 # ------------------------------------------------------------------
 
-_SENTINEL = "# --- hermes-opensandbox backend (auto-patched) ---"
+_PATCH_VERSION = pkg_version("hermes-open-sandbox")
+_SENTINEL_RE = re.compile(
+    r"# --- hermes-opensandbox backend (?:v([\d.]+) )?\(auto-patched\) ---"
+)
+_LEGACY_SENTINEL = "# --- hermes-opensandbox backend (auto-patched) ---"
+_SENTINEL = f"# --- hermes-opensandbox backend v{_PATCH_VERSION} (auto-patched) ---"
 
 # ------------------------------------------------------------------
 # Injection-point markers (used for detection & replacement)
@@ -62,6 +70,14 @@ _OPEN_CHECK_STANZA = (
     "        "
 )
 
+_OPEN_BRANCH_PATTERN = re.compile(
+    r'    elif env_type == "opensandbox":\n'
+    r"        # --- hermes-opensandbox backend (?:v[\d.]+ )?\(auto-patched\) ---\n"
+    r".*?"
+    r"        \)\n",
+    re.DOTALL,
+)
+
 
 # ------------------------------------------------------------------
 # Thin adapter template  (written into tools/environments/opensandbox.py)
@@ -84,7 +100,7 @@ from hermes_opensandbox.session import OpenSandboxSession, SandboxCreationError
 from hermes_opensandbox.config import SandboxConfig
 
 
-_RENEW_INTERVAL = 900  # seconds between sandbox renewal calls
+_RENEW_INTERVAL = 900
 
 
 def _is_debug() -> bool:
@@ -113,6 +129,7 @@ class OpenSandboxEnvironment(BaseEnvironment):
         domain: str,
         api_key: str,
         mounts: dict[str, str] | None = None,
+        volumes: list[dict] | None = None,
     ) -> None:
         super().__init__(cwd=cwd, timeout=timeout)
 
@@ -127,6 +144,7 @@ class OpenSandboxEnvironment(BaseEnvironment):
             disk=disk,
             task_id=task_id,
             mounts=mounts,
+            volumes=volumes,
             debug=_is_debug(),
         )
         self._session = OpenSandboxSession(self._config)
@@ -218,6 +236,7 @@ _OPEN_BRANCH = f"""    elif env_type == "opensandbox":
             domain=_sandbox_cfg.domain,
             api_key=_sandbox_cfg.api_key,
             mounts=_sandbox_cfg.mounts,
+            volumes=_sandbox_cfg.volumes,
         )
 """
 
@@ -245,8 +264,10 @@ def find_hermes_root() -> Path | None:
     return None
 
 
-def _is_patched(content: str) -> bool:
-    return _SENTINEL in content
+def _extract_patch_version(content: str) -> str | None:
+    """Return the version string embedded in a prior sentinel, or ``None``."""
+    m = _SENTINEL_RE.search(content)
+    return m.group(1) if m else None
 
 
 # ------------------------------------------------------------------
@@ -260,19 +281,47 @@ def patch_terminal_tool(path: Path) -> bool:
     Each injection point is checked independently so partial patches
     (e.g. a prior version that only applied step 1) are completed on
     re-run rather than skipped wholesale.
+
+    When the opensandbox branch already exists, the embedded version is
+    compared with the current package version.  If they differ the
+    entire block is replaced with the latest template so parameter
+    additions (e.g. ``volumes``) are always propagated.
     """
     content = path.read_text()
     changed = False
 
-    # 1. Replace the else: block in _create_environment with
-    #    opensandbox elif + updated else (idempotent via sentinel)
-    if _SENTINEL in content:
-        logger.info("terminal_tool.py: opensandbox elif branch already present")
+    # 1. Replace or insert the opensandbox elif branch in _create_environment.
+    existing_ver = _extract_patch_version(content)
+    has_legacy = _LEGACY_SENTINEL in content
+    if existing_ver is not None or has_legacy:
+        if existing_ver != _PATCH_VERSION:
+            match = _OPEN_BRANCH_PATTERN.search(content)
+            if match:
+                content = (
+                    content[: match.start()] + _OPEN_BRANCH + content[match.end() :]
+                )
+                changed = True
+                logger.info(
+                    "Patched terminal_tool.py: updated opensandbox branch %s → v%s",
+                    f"v{existing_ver}" if existing_ver else "legacy",
+                    _PATCH_VERSION,
+                )
+            else:
+                logger.warning(
+                    "terminal_tool.py: sentinel found but block could not be matched; "
+                    "skipping update"
+                )
+        else:
+            logger.info(
+                "terminal_tool.py: opensandbox branch v%s already up-to-date",
+                existing_ver,
+            )
     elif _ELSE_MARKER in content:
         content = content.replace(_ELSE_MARKER, _ELSE_REPLACEMENT, 1)
         changed = True
         logger.info(
-            "Patched terminal_tool.py: inserted opensandbox branch + updated error message"
+            "Patched terminal_tool.py: inserted opensandbox branch v%s + updated error message",
+            _PATCH_VERSION,
         )
     else:
         logger.error("Cannot find else-block insertion point in terminal_tool.py")
@@ -306,10 +355,13 @@ def patch_prompt_builder(path: Path) -> bool:
     content = path.read_text()
 
     already = '"opensandbox"' in content
-    remote_patched = _is_patched(content)
+    existing_ver = _extract_patch_version(content)
+    has_legacy = _LEGACY_SENTINEL in content
 
-    if already and remote_patched:
-        logger.info("prompt_builder.py already patched, skipping")
+    if already and existing_ver == _PATCH_VERSION and not has_legacy:
+        logger.info(
+            "prompt_builder.py already patched at v%s, skipping", _PATCH_VERSION
+        )
         return True
 
     changed = False
@@ -354,9 +406,17 @@ def create_opensandbox_module(root: Path) -> bool:
     module_path = root / "tools" / "environments" / _ADAPTER_MODULE
     if module_path.exists():
         current = module_path.read_text()
-        if _SENTINEL in current:
-            module_path.write_text(_ADAPTER_CODE)
-            logger.info("opensandbox.py updated to latest template")
+        if _LEGACY_SENTINEL in current or _SENTINEL_RE.search(current):
+            existing_ver = _extract_patch_version(current)
+            if existing_ver != _PATCH_VERSION:
+                module_path.write_text(_ADAPTER_CODE)
+                logger.info(
+                    "opensandbox.py updated %s → v%s",
+                    f"v{existing_ver}" if existing_ver else "legacy",
+                    _PATCH_VERSION,
+                )
+            else:
+                logger.info("opensandbox.py already at v%s, skipping", _PATCH_VERSION)
             return True
         logger.warning(
             "opensandbox.py exists but was NOT auto-generated — skipping to avoid overwrite"
@@ -364,7 +424,7 @@ def create_opensandbox_module(root: Path) -> bool:
         return True
 
     module_path.write_text(_ADAPTER_CODE)
-    logger.info("Created %s", module_path)
+    logger.info("Created %s (v%s)", module_path, _PATCH_VERSION)
     return True
 
 
@@ -375,9 +435,17 @@ def create_opensandbox_module(root: Path) -> bool:
 
 def _backup_and_write(path: Path, content: str) -> None:
     backup = path.with_suffix(".py.bak")
-    shutil.copy2(path, backup)
+    try:
+        if backup.exists():
+            backup.unlink()
+        shutil.copy2(path, backup)
+        logger.info("Backup saved to %s", backup)
+    except PermissionError:
+        logger.warning(
+            "Cannot create backup %s (permission denied), writing without backup",
+            backup,
+        )
     path.write_text(content)
-    logger.info("Backup saved to %s", backup)
 
 
 # ------------------------------------------------------------------
@@ -419,7 +487,7 @@ def main() -> int:
     ok = create_opensandbox_module(root) and ok
 
     if ok:
-        logger.info("hermes-open-sandbox setup complete")
+        logger.info("hermes-open-sandbox setup complete (v%s)", _PATCH_VERSION)
         return 0
 
     return 1

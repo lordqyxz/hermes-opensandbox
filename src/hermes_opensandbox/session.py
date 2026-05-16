@@ -127,9 +127,46 @@ class OpenSandboxSession:
                 )
             except ImportError:
                 pass
+        for vol_spec in self._config.volumes or []:
+            try:
+                from opensandbox.models.sandboxes import (  # noqa: PLC0415
+                    Host,
+                    OSSFS,
+                    PVC,
+                    Volume,
+                )
+
+                backend_kwargs: dict[str, Any] = {}
+                if "host" in vol_spec:
+                    backend_kwargs["host"] = Host(**vol_spec["host"])
+                if "pvc" in vol_spec:
+                    backend_kwargs["pvc"] = PVC(**vol_spec["pvc"])
+                if "ossfs" in vol_spec:
+                    backend_kwargs["ossfs"] = OSSFS(**vol_spec["ossfs"])
+                volumes.append(
+                    Volume(
+                        name=vol_spec["name"],
+                        mountPath=vol_spec["mountPath"],
+                        readOnly=vol_spec.get("readOnly", False),
+                        subPath=vol_spec.get("subPath"),
+                        **backend_kwargs,
+                    )
+                )
+            except ImportError:
+                pass
         if volumes:
             logger.info(
-                "Mounts: %s", {v.host.path: v.mount_path for v in volumes if v.host}
+                "Mounts: %s",
+                {
+                    v.name: {
+                        **({"host": v.host.path} if v.host else {}),
+                        **({"pvc": v.pvc.claim_name} if v.pvc else {}),
+                        **({"ossfs": v.ossfs.bucket} if v.ossfs else {}),
+                        "mountPath": v.mount_path,
+                        **({"subPath": v.sub_path} if v.sub_path else {}),
+                    }
+                    for v in volumes
+                },
             )
 
         logger.info(

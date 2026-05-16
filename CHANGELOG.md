@@ -1,3 +1,26 @@
+## v0.3.0 (2026-05-16)
+
+- 新增 PVC (PersistentVolumeClaim) 挂载支持，可挂载 JuiceFS 等 k8s 存储卷
+- 新增 OSSFS (阿里云 OSS) 挂载支持
+- 新增 `subPath` 和 `readOnly` 字段支持，适用于所有后端 (host/pvc/ossfs)
+- 新增 `OPENSANDBOX_VOLUMES` 环境变量，JSON 数组格式配置复杂挂载
+- 移除 `DEFAULT_MOUNTS` 本地 hostPath 默认挂载（`$HOME`、`/tmp`、`/var/folders`）
+- 修复注入机制 bug：sentinel 检测导致模板参数更新不生效
+  - sentinel 改为版本号标记格式：`# --- hermes-opensandbox backend v0.3.0 (auto-patched) ---`
+  - setup 时对比已注入版本与当前包版本，版本不同自动替换注入块
+  - 兼容旧版无版本号 sentinel，自动升级为新格式
+- `_backup_and_write()` 增加 `PermissionError` 容错处理
+
+## v0.2.1 (2026-05-16)
+
+- 新增 YAML 配置文件支持：`~/.hermes/opensandbox.yaml`（与 Hermes `config.yaml` 同级）
+- 新增 `OPENSANDBOX_CONFIG` 环境变量，可指定自定义配置文件路径
+- 新增 `SandboxConfig.from_file()` 类方法，从 YAML 文件加载配置
+- 配置优先级链：`overrides` > `OPENSANDBOX_*` 环境变量 > 配置文件 > 代码默认值
+- 无配置文件时行为不变，完全向后兼容
+- 新增 `pyyaml>=6.0` 依赖
+- 修复 `__version__` 与 VERSION/pyproject.toml 不同步的问题
+
 ## v0.1.3 (2026-05-12)
 
 - 沙箱改为 session 级持久化：每个 session 仅创建一个沙箱，session 退出才销毁

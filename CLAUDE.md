@@ -9,12 +9,14 @@
   - `VERSION` — 纯文本文件，CI/CD 和脚本读取
   - `pyproject.toml` — `project.version` 字段
 - 发布流程：
-  1. 更新 `VERSION` 和 `pyproject.toml` 中的版本号
+  1. 更新 `VERSION` 和 `pyproject.toml` 中的版本号，修复bug改最后一位，更改功能改中间位置，架构重构改第一位。
   2. 更新 `CHANGELOG.md`，在顶部追加 `## v<version> (YYYY-MM-DD)` 版本条目
   3. 打 tag：`git tag -a v<version> -m "v<version>"`
   4. 推送：`git push && git push --tags`（CI 在 tag push 时自动发布到 PyPI）
 
-## 开发命令
+## 开发信息
+
+- 类型注解尽量不用 Any
 
 ```bash
 # 安装开发依赖
@@ -92,25 +94,25 @@ grep "opensandbox" ~/.hermes/hermes-agent/tools/terminal_tool.py | wc -l
 
 ### 错误分类速查
 
-| 异常类型 | 含义 | 检查项 |
-|----------|------|--------|
-| `SandboxImageError` | 镜像不可用或不兼容 | 镜像名、tag、节点缓存、bash 可用性 |
-| `SandboxNetworkError` | API 端点不可达 | domain 配置、网络连通性、k8s ingress |
-| `SandboxAuthError` | 认证失败 | API key、Hermes config、环境变量 |
-| `SandboxCreationError` | 其他创建失败 | 综合检查日志 |
-| `SandboxNotCreatedError` | 未调用 create() 就 execute() | 代码逻辑错误 |
+| 异常类型                     | 含义                       | 检查项                         |
+| ------------------------ | ------------------------ | --------------------------- |
+| `SandboxImageError`      | 镜像不可用或不兼容                | 镜像名、tag、节点缓存、bash 可用性       |
+| `SandboxNetworkError`    | API 端点不可达                | domain 配置、网络连通性、k8s ingress |
+| `SandboxAuthError`       | 认证失败                     | API key、Hermes config、环境变量  |
+| `SandboxCreationError`   | 其他创建失败                   | 综合检查日志                      |
+| `SandboxNotCreatedError` | 未调用 create() 就 execute() | 代码逻辑错误                      |
 
 ## Skill 映射表
 
-| 语言/框架 | 代码级 skill | 说明 |
-|-----------|-------------|------|
+| 语言/框架  | 代码级 skill   | 说明                                      |
+| ------ | ----------- | --------------------------------------- |
 | Python | python-code | Pythonic 编码风格、DDD/Clean Architecture 实现 |
 
 ## 注入机制注意事项
 
 - 注入使用字符串标记匹配 Hermes Agent 源码，Hermes 函数重命名会导致标记失效
 - `_CHECK_PATTERN` 使用正则 `return\s+\w+\(config\)` 匹配，对函数名重命名有抗性
-- 每个注入点独立检测幂等（sentinel / find_spec），避免部分注入残留被跳过
+- 每个注入点独立检测幂等（sentinel / find\_spec），避免部分注入残留被跳过
 - 标记匹配失败必须记录 error/warning，不能静默跳过
 
 ## 配置流转路径
@@ -136,16 +138,17 @@ grep "opensandbox" ~/.hermes/hermes-agent/tools/terminal_tool.py | wc -l
 
 ## 资源默认值
 
-| 参数 | 值 | 环境变量 |
-|------|-----|----------|
-| CPU | 0.5 | `OPENSANDBOX_CPU` |
-| 内存 | 512Mi | `OPENSANDBOX_MEMORY` |
-| 磁盘 | 5000Mi | `OPENSANDBOX_DISK` |
-| 超时 | 86400s (24h) | `OPENSANDBOX_TIMEOUT` |
-| 续期间隔 | 900s | 硬编码 `_RENEW_INTERVAL` |
+| 参数   | 值            | 环境变量                  |
+| ---- | ------------ | --------------------- |
+| CPU  | 0.5          | `OPENSANDBOX_CPU`     |
+| 内存   | 512Mi        | `OPENSANDBOX_MEMORY`  |
+| 磁盘   | 5000Mi       | `OPENSANDBOX_DISK`    |
+| 超时   | 86400s (24h) | `OPENSANDBOX_TIMEOUT` |
+| 续期间隔 | 900s         | 硬编码 `_RENEW_INTERVAL` |
 
 ## Debug 模式注意事项
 
 - `OPENSANDBOX_DEBUG=1` 时 `kill()` 和 `close()` 跳过实际操作，沙箱保留运行
 - 多次 `hermes -z` 调用会在 k8s 中累积 Running 沙箱，单节点集群可能耗尽资源
 - 测试完成后需手动清理：`curl -X DELETE /sandboxes/{id}` 或 `kubectl delete pod -n opensandbox`
+

@@ -2,32 +2,47 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import os
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, cast
+
+import yaml
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_IMAGE = "nikolaik/python-nodejs:python3.11-nodejs20"
 DEFAULT_DOMAIN = "localhost:8080"
-DEFAULT_TIMEOUT = 86400  # 24h sandbox lifetime before auto-close
+DEFAULT_TIMEOUT = 86400
 DEFAULT_CPU = 0.5
 DEFAULT_MEMORY_MB = 512
 DEFAULT_DISK_MB = 5000
-DEFAULT_RENEW_INTERVAL = 1800  # 30min between sandbox renewal calls
+DEFAULT_RENEW_INTERVAL = 1800
 DEFAULT_CWD = "/workspace"
 
-# Default host paths to mount into the sandbox (host_path → mount_path).
-# The mount_path mirrors the host_path so absolute paths work transparently.
-DEFAULT_MOUNTS: dict[str, str] = {
-    os.path.expanduser("~"): os.path.expanduser("~"),
-}
+_DEFAULT_CONFIG_PATH = Path.home() / ".hermes" / "opensandbox.yaml"
 
-# Additional commonly needed paths on macOS.
-_macos_common = [
-    "/tmp",
-    "/var/folders",
-]
-for _p in _macos_common:
-    if os.path.exists(_p):
-        DEFAULT_MOUNTS[_p] = _p
+
+def _resolve_config_path() -> Path | None:
+    """Return the config file path to use, or *None* if none exists.
+
+    Resolution order:
+
+    1. ``OPENSANDBOX_CONFIG`` environment variable (explicit path)
+    2. ``~/.hermes/opensandbox.yaml`` (default, next to Hermes config)
+    """
+    env_path = os.getenv("OPENSANDBOX_CONFIG")
+    if env_path:
+        p = Path(env_path)
+        if p.is_file():
+            return p
+        logger.warning("OPENSANDBOX_CONFIG=%s does not exist, ignoring", env_path)
+        return None
+    if _DEFAULT_CONFIG_PATH.is_file():
+        return _DEFAULT_CONFIG_PATH
+    return None
 
 
 def _parse_mounts(raw: str) -> dict[str, str]:
@@ -45,6 +60,41 @@ def _parse_mounts(raw: str) -> dict[str, str]:
     return result
 
 
+def _parse_volumes(raw: str) -> list[dict[str, Any]]:
+    """Parse a JSON array of volume specifications.
+
+    Each element is a dict matching the OpenSandbox SDK ``Volume`` model:
+
+    .. code-block:: json
+
+        [
+          {
+            "name": "models-vol",
+            "pvc": {"claimName": "juicefs-models", "storageClass": "juicefs-sc"},
+            "mountPath": "/mnt/models",
+            "subPath": "v2/checkpoints",
+            "readOnly": true
+          }
+        ]
+
+    Supports three mutually-exclusive backends: ``host``, ``pvc``, ``ossfs``.
+    """
+    parsed: list[dict[str, Any]] = json.loads(raw)
+    return parsed
+
+
+def _load_yaml_config(path: Path) -> dict[str, Any]:
+    """Load a YAML config file and return its contents as a dict."""
+    with path.open("r", encoding="utf-8") as f:
+        data: Any = yaml.safe_load(f)
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        logger.warning("Config file %s is not a mapping, ignoring", path)
+        return {}
+    return cast(dict[str, Any], data)
+
+
 @dataclass
 class SandboxConfig:
     """Configuration for an OpenSandbox session."""
@@ -59,26 +109,105 @@ class SandboxConfig:
     disk: int = DEFAULT_DISK_MB
     task_id: str = "default"
     mounts: dict[str, str] | None = None
+    volumes: list[dict[str, Any]] | None = None
     debug: bool = False
 
     @classmethod
-    def from_env(cls, **overrides: str | float | int | None) -> SandboxConfig:
-        """Build config from environment variables, with *overrides* taking priority."""
-        mounts_raw = os.getenv("OPENSANDBOX_MOUNTS", "")
-        mounts = _parse_mounts(mounts_raw) if mounts_raw else dict(DEFAULT_MOUNTS)
-        kwargs: dict[str, str | float | int | object] = {
-            "image": os.getenv("OPENSANDBOX_IMAGE", DEFAULT_IMAGE),
-            "domain": os.getenv("OPENSANDBOX_DOMAIN", DEFAULT_DOMAIN),
-            "api_key": os.getenv("OPENSANDBOX_API_KEY", ""),
-            "cwd": os.getenv("OPENSANDBOX_CWD", DEFAULT_CWD),
-            "cpu": float(os.getenv("OPENSANDBOX_CPU", str(DEFAULT_CPU))),
-            "memory": int(os.getenv("OPENSANDBOX_MEMORY", str(DEFAULT_MEMORY_MB))),
-            "disk": int(os.getenv("OPENSANDBOX_DISK", str(DEFAULT_DISK_MB))),
-            "timeout": int(os.getenv("OPENSANDBOX_TIMEOUT", str(DEFAULT_TIMEOUT))),
-            "task_id": os.getenv("OPENSANDBOX_TASK_ID", "default"),
-            "mounts": mounts,
-            "debug": os.getenv("OPENSANDBOX_DEBUG", "") in ("1", "true", "yes"),
+    def from_file(cls, path: Path | None = None) -> dict[str, Any]:
+        """Load config values from a YAML file.
+
+        Returns a dict of field values (only keys present in the file are
+        included).  Returns an empty dict if no file is found or the file
+        is empty.
+        """
+        if path is None:
+            resolved = _resolve_config_path()
+            if resolved is None:
+                return {}
+            path = resolved
+        if not path.is_file():
+            return {}
+        logger.info("Loading sandbox config from %s", path)
+        raw = _load_yaml_config(path)
+        result: dict[str, Any] = {}
+        _FIELD_MAP: dict[str, type] = {
+            "image": str,
+            "domain": str,
+            "api_key": str,
+            "cwd": str,
+            "timeout": int,
+            "cpu": float,
+            "memory": int,
+            "disk": int,
+            "task_id": str,
+            "debug": bool,
         }
+        for key, expected_type in _FIELD_MAP.items():
+            if key in raw and raw[key] is not None:
+                result[key] = expected_type(raw[key])
+        if "mounts" in raw and raw["mounts"] is not None:
+            m: Any = raw["mounts"]
+            if isinstance(m, dict):
+                m_typed = cast(dict[str, Any], m)
+                result["mounts"] = {str(k): str(v) for k, v in m_typed.items()}
+            elif isinstance(m, str):
+                result["mounts"] = _parse_mounts(m)
+        if "volumes" in raw and raw["volumes"] is not None:
+            v = raw["volumes"]
+            if isinstance(v, list):
+                result["volumes"] = v
+            elif isinstance(v, str):
+                result["volumes"] = _parse_volumes(v)
+        return result
+
+    @classmethod
+    def from_env(cls, **overrides: str | float | int | None) -> SandboxConfig:
+        """Build config from config file + environment variables.
+
+        Priority (highest → lowest):
+            *overrides* > ``OPENSANDBOX_*`` env vars > config file > code defaults
+        """
+        file_values = cls.from_file()
+
+        mounts_raw = os.getenv("OPENSANDBOX_MOUNTS", "")
+        mounts = _parse_mounts(mounts_raw) if mounts_raw else None
+        volumes_raw = os.getenv("OPENSANDBOX_VOLUMES", "")
+        volumes = _parse_volumes(volumes_raw) if volumes_raw else None
+
+        env_values: dict[str, Any] = {
+            "image": os.getenv("OPENSANDBOX_IMAGE"),
+            "domain": os.getenv("OPENSANDBOX_DOMAIN"),
+            "api_key": os.getenv("OPENSANDBOX_API_KEY"),
+            "cwd": os.getenv("OPENSANDBOX_CWD"),
+            "cpu": os.getenv("OPENSANDBOX_CPU"),
+            "memory": os.getenv("OPENSANDBOX_MEMORY"),
+            "disk": os.getenv("OPENSANDBOX_DISK"),
+            "timeout": os.getenv("OPENSANDBOX_TIMEOUT"),
+            "task_id": os.getenv("OPENSANDBOX_TASK_ID"),
+            "mounts": mounts,
+            "volumes": volumes,
+            "debug": os.getenv("OPENSANDBOX_DEBUG"),
+        }
+
+        env_typed: dict[str, Any] = {}
+        _TYPE_MAP: dict[str, type] = {
+            "cpu": float,
+            "memory": int,
+            "disk": int,
+            "timeout": int,
+        }
+        for k, v in env_values.items():
+            if v is None or v == "":
+                continue
+            if k == "debug":
+                env_typed[k] = v in ("1", "true", "yes")
+            elif k in _TYPE_MAP:
+                env_typed[k] = _TYPE_MAP[k](v)
+            else:
+                env_typed[k] = v
+
+        kwargs: dict[str, Any] = file_values.copy()
+        kwargs.update(env_typed)
         for k, v in overrides.items():
             if v is not None:
                 kwargs[k] = v
